@@ -8,10 +8,17 @@ import (
 
 func main() {
 	sample := `{ "item": 42 }`
-
-	tokenizer := pj.NewTokenizer(sample)
 	fmt.Println("sample json is", sample)
-	for _, t := range tokenizer.Tokenize() {
-		fmt.Println("Name:", t.Name, ", Length:", t.Length)
+
+	l := pj.NewLexer(sample)
+	p := pj.NewParser(l)
+
+	root, err := p.Parse()
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
+
+	fmt.Print("=> ")
+	root.PrintFromRoot()
 }
