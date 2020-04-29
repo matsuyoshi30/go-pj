@@ -2,6 +2,7 @@ package pj
 
 import (
 	"fmt"
+	"strconv"
 )
 
 // tokenize
@@ -16,6 +17,9 @@ const (
 	TK_EBRACE // }
 	TK_COLON  // :
 
+	TK_TRUE
+	TK_FALSE
+
 	TK_EOF
 
 	TK_ILLEGAL
@@ -24,6 +28,7 @@ const (
 type Token struct {
 	Type   TokenType
 	Name   string
+	Value  int
 	Length int
 }
 
@@ -75,13 +80,25 @@ func (l *Lexer) NextToken() Token {
 	case 0:
 		token = newToken(TK_EOF, l.ch, 1)
 	default:
-		if isDigit(l.ch) {
+		if isLetter(l.ch) {
+			p := l.pos
+			for isLetter(l.ch) {
+				l.readChar()
+			}
+			token = newToken(LookUpIdent(l.input[p:l.pos]), l.ch, l.pos-p)
+			token.Name = l.input[p:l.pos]
+		} else if isDigit(l.ch) {
 			p := l.pos
 			for isDigit(l.ch) {
 				l.readChar()
 			}
 			token = newToken(TK_INT, l.ch, l.pos-p)
 			token.Name = l.input[p:l.pos]
+			num, err := strconv.Atoi(token.Name)
+			if err != nil {
+				token.Type = TK_ILLEGAL
+			}
+			token.Value = num
 		} else {
 			token = newToken(TK_ILLEGAL, l.ch, -1)
 		}
@@ -99,6 +116,18 @@ func newToken(ty TokenType, ch byte, length int) Token {
 	}
 }
 
+var keywords = map[string]TokenType{
+	"true":  TK_TRUE,
+	"false": TK_FALSE,
+}
+
+func LookUpIdent(str string) TokenType {
+	if tok, ok := keywords[str]; ok {
+		return tok
+	}
+	return TK_ILLEGAL
+}
+
 func isWhiteSpace(c byte) bool {
 	if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
 		return true
@@ -108,6 +137,13 @@ func isWhiteSpace(c byte) bool {
 
 func isQuote(c byte) bool {
 	if c == '"' {
+		return true
+	}
+	return false
+}
+
+func isLetter(c byte) bool {
+	if ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') {
 		return true
 	}
 	return false
@@ -239,15 +275,24 @@ func (p *Parser) parseProperty() Property {
 			if p.cur.Type == TK_STR {
 				prop.key = p.cur.Name
 				propState = PropertyKey
-				p.nextToken()
 			}
+			p.nextToken()
 		case PropertyKey:
 			if p.cur.Type == TK_COLON {
 				propState = PropertyValue
 				p.nextToken()
 			}
 		case PropertyValue:
-			prop.val = p.cur.Name
+			switch p.cur.Type {
+			case TK_INT:
+				prop.val = p.cur.Value
+			case TK_STR:
+				prop.val = p.cur.Name
+			case TK_TRUE:
+				prop.val = true
+			case TK_FALSE:
+				prop.val = false
+			}
 			return prop
 		}
 	}
