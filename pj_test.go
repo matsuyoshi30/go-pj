@@ -1,6 +1,7 @@
 package pj
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -45,6 +46,41 @@ func checkParseSimpleJSON(t *testing.T, r *Root, k string, v interface{}, l int)
 			}
 			if c.val != v {
 				t.Fatalf("Object Children Value: expect is %s but got %s\n", v, c.val)
+			}
+		}
+	}
+}
+
+func TestParseValueObjectJSON(t *testing.T) {
+	testcases := []struct {
+		input     string
+		expectKey string
+		expectVal Object
+	}{
+		{`{ "item5": { "object": "value" } }`, "item5",
+			Object{ty: ObjectNode, children: []Property{Property{ty: PropertyNode, key: "object", val: "value"}}}},
+	}
+
+	for _, tt := range testcases {
+		l := NewLexer(tt.input)
+		p := NewParser(l)
+
+		root, err := p.Parse()
+		if err != nil {
+			t.Fatalf("unexpected error: %v\n", err)
+		}
+
+		rootValue := *root.val
+		switch rootValue.(type) {
+		case Object:
+			obj, _ := rootValue.(Object)
+			for _, c := range obj.children {
+				if c.key != tt.expectKey {
+					t.Fatalf("Object Children Key: expect is %s but got %s\n", tt.expectKey, c.key)
+				}
+				if !reflect.DeepEqual(c.val, tt.expectVal) {
+					t.Fatalf("Object Children Value: expect is %#v but got %#v\n", tt.expectVal, c.val)
+				}
 			}
 		}
 	}

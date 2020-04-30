@@ -284,6 +284,8 @@ func (p *Parser) parseProperty() Property {
 			}
 		case PropertyValue:
 			switch p.cur.Type {
+			case TK_SBRACE:
+				prop.val = p.parseObject()
 			case TK_INT:
 				prop.val = p.cur.Value
 			case TK_STR:
@@ -306,7 +308,24 @@ func (r *Root) PrintFromRoot() {
 	case Object:
 		obj, _ := rootValue.(Object)
 		for _, c := range obj.children {
-			fmt.Printf("KEY: %s, VALUE: %s\n", c.key, c.val)
+			fmt.Printf("KEY: %s, ", c.key)
+			if cObj, ok := c.val.(Object); ok {
+				fmt.Printf("[ ")
+				cObj.PrintObject()
+				fmt.Printf(" ]\n")
+			} else {
+				fmt.Printf("VALUE: %s\n", c.val)
+			}
+		}
+	}
+}
+
+func (o *Object) PrintObject() {
+	for _, c := range o.children {
+		if valObj, ok := c.val.(Object); ok {
+			valObj.PrintObject()
+		} else {
+			fmt.Printf("KEY: %s, VALUE: %s", c.key, c.val)
 		}
 	}
 }

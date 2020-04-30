@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	sample := `{ "item": 42 }`
+	sample := `{ "item": {"object" : "value"} }`
 	fmt.Println("sample json is", sample)
 
 	l := pj.NewLexer(sample)
