@@ -59,6 +59,9 @@ func TestParseValueObjectJSON(t *testing.T) {
 	}{
 		{`{ "item5": { "object": "value" } }`, "item5",
 			Object{ty: ObjectNode, children: []Property{Property{ty: PropertyNode, key: "object", val: "value"}}}},
+		{`{ "item6": { "object": { "object2": "more" } } }`, "item6",
+			Object{ty: ObjectNode, children: []Property{Property{ty: PropertyNode, key: "object",
+				val: Object{ty: ObjectNode, children: []Property{Property{ty: PropertyNode, key: "object2", val: "more"}}}}}}},
 	}
 
 	for _, tt := range testcases {
@@ -82,6 +85,84 @@ func TestParseValueObjectJSON(t *testing.T) {
 					t.Fatalf("Object Children Value: expect is %#v but got %#v\n", tt.expectVal, c.val)
 				}
 			}
+		default:
+			t.Fatalf("unexpected root value type\n")
+		}
+	}
+}
+
+func TestParseArrayJSON(t *testing.T) {
+	testcases := []struct {
+		input     string
+		expectVal []Value
+	}{
+		{`[]`, []Value{}},
+		{`["arr1", "arr2"]`, []Value{Value("arr1"), Value("arr2")}},
+		{`["str", 0]`, []Value{Value("str"), Value(0)}},
+	}
+
+	for _, tt := range testcases {
+		l := NewLexer(tt.input)
+		p := NewParser(l)
+
+		root, err := p.Parse()
+		if err != nil {
+			t.Fatalf("unexpected error: %v\n", err)
+		}
+
+		rootValue := *root.val
+		switch rootValue.(type) {
+		case Array:
+			arr, _ := rootValue.(Array)
+			for idx, c := range arr.children {
+				if !reflect.DeepEqual(c, tt.expectVal[idx]) {
+					t.Fatalf("Object Children Value: expect is %#v but got %#v\n", tt.expectVal, c)
+				}
+			}
+		default:
+			t.Fatalf("unexpected root value type\n")
+		}
+	}
+}
+
+func TestParseValueArrayJSON(t *testing.T) {
+	testcases := []struct {
+		input     string
+		expectVal []Value
+	}{
+		{`{ "item": ["arr1", "arr2"]}`, []Value{Value("arr1"), Value("arr2")}},
+		{`{ "item": ["string", 42]}`, []Value{Value("string"), Value(42)}},
+		{`{ "item": [true, false]}`, []Value{Value(true), Value(false)}},
+	}
+
+	for _, tt := range testcases {
+		l := NewLexer(tt.input)
+		p := NewParser(l)
+
+		root, err := p.Parse()
+		if err != nil {
+			t.Fatalf("unexpected error: %v\n", err)
+		}
+
+		rootValue := *root.val
+		switch rootValue.(type) {
+		case Object:
+			obj, _ := rootValue.(Object)
+			for _, c := range obj.children {
+				switch c.val.(type) {
+				case Array:
+					arr, _ := c.val.(Array)
+					for idx, cArr := range arr.children {
+						if !reflect.DeepEqual(cArr, tt.expectVal[idx]) {
+							t.Fatalf("Object Children Value: expect is %#v but got %#v\n", tt.expectVal, c)
+						}
+					}
+				default:
+					t.Fatalf("unexpected value type\n")
+				}
+			}
+		default:
+			t.Fatalf("unexpected root value type\n")
 		}
 	}
 }

@@ -13,9 +13,12 @@ const (
 	TK_INT TokenType = iota
 	TK_STR
 
-	TK_SBRACE // {
-	TK_EBRACE // }
-	TK_COLON  // :
+	TK_SBRACE   // {
+	TK_EBRACE   // }
+	TK_SBRACKET // [
+	TK_EBRACKET // ]
+	TK_COMMA    // ,
+	TK_COLON    // :
 
 	TK_TRUE
 	TK_FALSE
@@ -55,6 +58,10 @@ func (l *Lexer) readChar() {
 	l.readPos++
 }
 
+func (l *Lexer) nextChar() byte {
+	return l.input[l.readPos]
+}
+
 func (l *Lexer) NextToken() Token {
 	var token Token
 
@@ -67,6 +74,12 @@ func (l *Lexer) NextToken() Token {
 		token = newToken(TK_SBRACE, l.ch, 1)
 	case '}':
 		token = newToken(TK_EBRACE, l.ch, 1)
+	case '[':
+		token = newToken(TK_SBRACKET, l.ch, 1)
+	case ']':
+		token = newToken(TK_EBRACKET, l.ch, 1)
+	case ',':
+		token = newToken(TK_COMMA, l.ch, 1)
 	case ':':
 		token = newToken(TK_COLON, l.ch, 1)
 	case '"':
@@ -82,18 +95,18 @@ func (l *Lexer) NextToken() Token {
 	default:
 		if isLetter(l.ch) {
 			p := l.pos
-			for isLetter(l.ch) {
+			for isLetter(l.nextChar()) {
 				l.readChar()
 			}
-			token = newToken(LookUpIdent(l.input[p:l.pos]), l.ch, l.pos-p)
-			token.Name = l.input[p:l.pos]
+			token = newToken(LookUpIdent(l.input[p:l.pos+1]), l.ch, l.pos-p)
+			token.Name = l.input[p : l.pos+1]
 		} else if isDigit(l.ch) {
 			p := l.pos
-			for isDigit(l.ch) {
+			for isDigit(l.nextChar()) {
 				l.readChar()
 			}
 			token = newToken(TK_INT, l.ch, l.pos-p)
-			token.Name = l.input[p:l.pos]
+			token.Name = l.input[p : l.pos+1]
 			num, err := strconv.Atoi(token.Name)
 			if err != nil {
 				token.Type = TK_ILLEGAL
@@ -179,6 +192,7 @@ const (
 	RootNode NodeType = iota
 	ObjectNode
 	PropertyNode
+	ArrayNode
 )
 
 type Root struct {
@@ -197,6 +211,11 @@ type Property struct {
 	val Value
 }
 
+type Array struct {
+	ty       NodeType
+	children []Value
+}
+
 type Value interface{}
 
 type State int
@@ -204,11 +223,13 @@ type State int
 const (
 	ObjectStart State = iota
 	ObjectOpen
-	ObjectProperty
 
 	PropertyStart
 	PropertyKey
 	PropertyValue
+
+	ArrayStart
+	ArrayOpen
 )
 
 func (p *Parser) nextToken() {
@@ -227,8 +248,21 @@ func (p *Parser) parseValue() Value {
 
 	if p.cur.Type == TK_SBRACE {
 		val = p.parseObject()
+	} else if p.cur.Type == TK_SBRACKET {
+		val = p.parseArray()
 	} else {
-		val = nil
+		switch p.cur.Type {
+		case TK_INT:
+			val = p.cur.Value
+		case TK_STR:
+			val = p.cur.Name
+		case TK_TRUE:
+			val = true
+		case TK_FALSE:
+			val = false
+		default:
+			val = nil
+		}
 	}
 
 	return val
@@ -253,11 +287,6 @@ func (p *Parser) parseObject() Value {
 				prop := p.parseProperty()
 				obj.children = append(obj.children, prop)
 				p.nextToken()
-			}
-		case ObjectProperty:
-			if p.cur.Type == TK_EBRACE {
-				p.nextToken()
-				return obj
 			}
 		}
 	}
@@ -286,6 +315,8 @@ func (p *Parser) parseProperty() Property {
 			switch p.cur.Type {
 			case TK_SBRACE:
 				prop.val = p.parseObject()
+			case TK_SBRACKET:
+				prop.val = p.parseArray()
 			case TK_INT:
 				prop.val = p.cur.Value
 			case TK_STR:
@@ -302,6 +333,34 @@ func (p *Parser) parseProperty() Property {
 	return prop
 }
 
+func (p *Parser) parseArray() Value {
+	arr := Array{ty: ArrayNode}
+	arrState := ArrayStart
+
+	for p.cur.Type != TK_EOF {
+		switch arrState {
+		case ArrayStart:
+			if p.cur.Type == TK_SBRACKET {
+				arrState = ArrayOpen
+				p.nextToken()
+			}
+		case ArrayOpen:
+			if p.cur.Type == TK_EBRACKET {
+				p.nextToken()
+				return arr
+			} else if p.cur.Type == TK_COMMA {
+				p.nextToken()
+			} else {
+				val := p.parseValue()
+				arr.children = append(arr.children, val)
+				p.nextToken()
+			}
+		}
+	}
+
+	return arr
+}
+
 func (r *Root) PrintFromRoot() {
 	rootValue := *r.val
 	switch rootValue.(type) {
@@ -310,22 +369,41 @@ func (r *Root) PrintFromRoot() {
 		for _, c := range obj.children {
 			fmt.Printf("KEY: %s, ", c.key)
 			if cObj, ok := c.val.(Object); ok {
-				fmt.Printf("[ ")
-				cObj.PrintObject()
-				fmt.Printf(" ]\n")
+				fmt.Printf("VALUE: { ")
+				cObj.printObject()
+				fmt.Printf(" }")
+			} else if cArr, ok := c.val.(Array); ok {
+				fmt.Printf("VALUE: [")
+				cArr.printArray()
+				fmt.Printf(" ]")
 			} else {
 				fmt.Printf("VALUE: %s\n", c.val)
 			}
 		}
+	case Array:
+		arr, _ := rootValue.(Array)
+		fmt.Printf("ARRAY: [")
+		arr.printArray()
+		fmt.Printf(" ]\n")
 	}
 }
 
-func (o *Object) PrintObject() {
+func (o *Object) printObject() {
 	for _, c := range o.children {
 		if valObj, ok := c.val.(Object); ok {
-			valObj.PrintObject()
+			valObj.printObject()
 		} else {
 			fmt.Printf("KEY: %s, VALUE: %s", c.key, c.val)
+		}
+	}
+}
+
+func (a *Array) printArray() {
+	for _, c := range a.children {
+		if valArr, ok := c.(Array); ok {
+			valArr.printArray()
+		} else {
+			fmt.Printf(" %v ", c)
 		}
 	}
 }
